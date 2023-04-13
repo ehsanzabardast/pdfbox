@@ -715,9 +715,16 @@ public class COSWriter implements ICOSVisitor
         trailer.accept(this);
     }
 
-    private void doWriteXRefInc(COSDocument doc, boolean hasHybridXRef) throws IOException
+    private void doWriteXRefInc(COSDocument doc) throws IOException
     {
-        if (doc.isXRefStream() || hasHybridXRef)
+        if (!doc.isXRefStream() || (doc.hasHybridXRef() && incrementalUpdate))
+        {
+            COSDictionary trailer = doc.getTrailer();
+            trailer.setLong(COSName.PREV, doc.getStartXref());
+            doWriteXRefTable();
+            doWriteTrailer(doc);
+        }
+        else
         {
             // the file uses XrefStreams, so we need to update
             // it with an xref stream. We create a new one and fill it
@@ -747,13 +754,6 @@ public class COSWriter implements ICOSVisitor
             setStartxref(getStandardOutput().getPos());
             COSStream stream2 = pdfxRefStream.getStream();
             doWriteObject(stream2);
-        }
-        else
-        {
-            COSDictionary trailer = doc.getTrailer();
-            trailer.setLong(COSName.PREV, doc.getStartXref());
-            doWriteXRefTable();
-            doWriteTrailer(doc);
         }
     }
 
@@ -885,7 +885,8 @@ public class COSWriter implements ICOSVisitor
         {
             throw new IOException("Can't write new byteRange '" + byteRange + 
                     "' not enough space: byteRange.length(): " + byteRange.length() + 
-                    ", byteRangeLength: " + byteRangeLength);
+                    ", byteRangeLength: " + byteRangeLength +
+                    ", byteRangeOffset: " + byteRangeOffset);
         }
 
         // copy the new incremental data into a buffer (e.g. signature dict, trailer)
@@ -1147,14 +1148,7 @@ public class COSWriter implements ICOSVisitor
     @Override
     public void visitFromDictionary(COSDictionary obj) throws IOException
     {
-        if (!reachedSignature)
-        {
-            COSBase itemType = obj.getItem(COSName.TYPE);
-            if (COSName.SIG.equals(itemType) || COSName.DOC_TIME_STAMP.equals(itemType))
-            {
-                reachedSignature = true;
-            }
-        }        
+        detectPossibleSignature(obj);
         getStandardOutput().write(DICT_OPEN);
         getStandardOutput().writeEOL();
         for (Map.Entry<COSName, COSBase> entry : obj.entrySet())
@@ -1239,6 +1233,32 @@ public class COSWriter implements ICOSVisitor
         getStandardOutput().writeEOL();
     }
 
+    private void detectPossibleSignature(COSDictionary obj) throws IOException
+    {
+        if (!reachedSignature && incrementalUpdate)
+        {
+            COSBase itemType = obj.getItem(COSName.TYPE);
+            if (COSName.SIG.equals(itemType) || COSName.DOC_TIME_STAMP.equals(itemType))
+            {
+                COSArray byteRange = obj.getCOSArray(COSName.BYTERANGE);
+                if (byteRange != null && byteRange.size() == 4)
+                {
+                    COSBase base2 = byteRange.get(2);
+                    COSBase base3 = byteRange.get(3);
+                    if (base2 instanceof COSInteger && base3 instanceof COSInteger)
+                    {
+                        long br2 = ((COSInteger) base2).longValue();
+                        long br3 = ((COSInteger) base3).longValue();
+                        if (br2 + br3 > incrementalInput.length())
+                        {
+                            reachedSignature = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public void visitFromDocument(COSDocument doc) throws IOException
     {
@@ -1264,18 +1284,9 @@ public class COSWriter implements ICOSVisitor
             doWriteBody(doc);
         }
 
-        // get the previous trailer
-        COSDictionary trailer = doc.getTrailer();
-        boolean hasHybridXRef = false;
-
-        if (trailer != null)
-        {
-            hasHybridXRef = trailer.getLong(COSName.XREF_STM) != -1;
-        }
-
         if(incrementalUpdate || doc.isXRefStream())
         {
-            doWriteXRefInc(doc, hasHybridXRef);
+            doWriteXRefInc(doc);
         }
         else
         {

@@ -42,8 +42,8 @@ import org.apache.pdfbox.cos.COSNumber;
 import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.io.RandomAccessRead;
+import org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction;
 import org.apache.pdfbox.pdfwriter.compress.CompressParameters;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
@@ -150,6 +150,8 @@ public class PDFMergerUtility
      * Get the merge mode to be used for merging AcroForms between documents
      * 
      * {@link AcroFormMergeMode}
+     * 
+     * @return the current AcroFormMergeMode
      */
     public AcroFormMergeMode getAcroFormMergeMode()
     {
@@ -160,6 +162,9 @@ public class PDFMergerUtility
      * Set the merge mode to be used for merging AcroForms between documents
      * 
      * {@link AcroFormMergeMode}
+     * 
+     * @param theAcroFormMergeMode AcroFormMergeMode to be used
+     * 
      */
     public void setAcroFormMergeMode(AcroFormMergeMode theAcroFormMergeMode)
     {
@@ -170,6 +175,8 @@ public class PDFMergerUtility
      * Get the merge mode to be used for merging documents
      * 
      * {@link DocumentMergeMode}
+     * 
+     * @return the current DocumentMergeMode
      */
     public DocumentMergeMode getDocumentMergeMode()
     {
@@ -180,19 +187,10 @@ public class PDFMergerUtility
      * Set the merge mode to be used for merging documents
      * 
      * {@link DocumentMergeMode}
+     * 
+     * @param theDocumentMergeMode DocumentMergeMode to be used
      */
     public void setDocumentMergeMode(DocumentMergeMode theDocumentMergeMode)
-    {
-        this.documentMergeMode = theDocumentMergeMode;
-    }
-
-    
-    /**
-     * Set the mode to be used for merging the documents
-     * 
-     * {@link DocumentMergeMode}
-     */
-    public void setAcroFormMergeMode(DocumentMergeMode theDocumentMergeMode)
     {
         this.documentMergeMode = theDocumentMergeMode;
     }
@@ -238,8 +236,9 @@ public class PDFMergerUtility
     }
 
     /**
-     * Get the destination document information that is to be set in {@link #mergeDocuments(org.apache.pdfbox.io.MemoryUsageSetting)
-     * }. The default is null, which means that it is ignored.
+     * Get the destination document information that is to be set in
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
+     * The default is null, which means that it is ignored.
      *
      * @return The destination document information.
      */
@@ -249,8 +248,9 @@ public class PDFMergerUtility
     }
 
     /**
-     * Set the destination document information that is to be set in {@link #mergeDocuments(org.apache.pdfbox.io.MemoryUsageSetting)
-     * }. The default is null, which means that it is ignored.
+     * Set the destination document information that is to be set in
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
+     * The default is null, which means that it is ignored.
      *
      * @param info The destination document information.
      */
@@ -260,8 +260,9 @@ public class PDFMergerUtility
     }
 
     /**
-     * Set the destination metadata that is to be set in {@link #mergeDocuments(org.apache.pdfbox.io.MemoryUsageSetting)
-     * }. The default is null, which means that it is ignored.
+     * Set the destination metadata that is to be set in
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
+     * The default is null, which means that it is ignored.
      *
      * @return The destination metadata.
      */
@@ -271,8 +272,9 @@ public class PDFMergerUtility
     }
 
     /**
-     * Set the destination metadata that is to be set in {@link #mergeDocuments(org.apache.pdfbox.io.MemoryUsageSetting)
-     * }. The default is null, which means that it is ignored.
+     * Set the destination metadata that is to be set in
+     * {@link #mergeDocuments(org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction) }.
+     * The default is null, which means that it is ignored.
      *
      * @param meta The destination metadata.
      */
@@ -326,44 +328,52 @@ public class PDFMergerUtility
     }
 
     /**
-     * Merge the list of source documents, saving the result in the destination
-     * file.
+     * Merge the list of source documents, saving the result in the destination file. The source
+     * list is not reset after merge. If you want to merge one document at a time, then it's better
+     * to use
+     * {@link #appendDocument(org.apache.pdfbox.pdmodel.PDDocument, org.apache.pdfbox.pdmodel.PDDocument)}.
      *
-     * @param memUsageSetting defines how memory is used for buffering PDF streams;
-     *                        in case of <code>null</code> unrestricted main memory is used 
+     * @param streamCacheCreateFunction a function to create an instance of a stream cache; in case of <code>null</code>
+     * unrestricted main memory is used
      * 
      * @throws IOException If there is an error saving the document.
      */
-    public void mergeDocuments(MemoryUsageSetting memUsageSetting) throws IOException
+    public void mergeDocuments(StreamCacheCreateFunction streamCacheCreateFunction) throws IOException
     {
-        mergeDocuments(memUsageSetting, CompressParameters.DEFAULT_COMPRESSION);
+        mergeDocuments(streamCacheCreateFunction, CompressParameters.DEFAULT_COMPRESSION);
     }
 
     /**
-     * Merge the list of source documents, saving the result in the destination file.
+     * Merge the list of source documents, saving the result in the destination file. The source
+     * list is not reset after merge. If you want to merge one document at a time, then it's better
+     * to use
+     * {@link #appendDocument(org.apache.pdfbox.pdmodel.PDDocument, org.apache.pdfbox.pdmodel.PDDocument)}.
      *
-     * @param memUsageSetting defines how memory is used for buffering PDF streams; in case of <code>null</code>
+     * @param streamCacheCreateFunction a function to create an instance of a stream cache; in case of <code>null</code>
      * unrestricted main memory is used
      * @param compressParameters defines if compressed object streams are enabled
      * 
      * @throws IOException If there is an error saving the document.
      */
-    public void mergeDocuments(MemoryUsageSetting memUsageSetting, CompressParameters compressParameters) throws IOException
+    public void mergeDocuments(StreamCacheCreateFunction streamCacheCreateFunction,
+            CompressParameters compressParameters) throws IOException
     {
         if (documentMergeMode == DocumentMergeMode.PDFBOX_LEGACY_MODE)
         {
-            legacyMergeDocuments(memUsageSetting, compressParameters);
+            legacyMergeDocuments(streamCacheCreateFunction, compressParameters);
         }
         else if (documentMergeMode == DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
         {
-            optimizedMergeDocuments(memUsageSetting, compressParameters);
+            optimizedMergeDocuments(streamCacheCreateFunction, compressParameters);
         }
     }
     
-    private void optimizedMergeDocuments(MemoryUsageSetting memUsageSetting,
+    private void optimizedMergeDocuments(StreamCacheCreateFunction streamCacheCreateFunction,
             CompressParameters compressParameters) throws IOException
     {
-        try (PDDocument destination = new PDDocument(memUsageSetting))
+        StreamCacheCreateFunction strmCacheFunc = streamCacheCreateFunction != null ? streamCacheCreateFunction
+                : IOUtils.createMemoryOnlyStreamCache();
+        try (PDDocument destination = new PDDocument(strmCacheFunc))
         {
             PDFCloneUtility cloner = new PDFCloneUtility(destination);
             PDPageTree destinationPageTree = destination.getPages(); // cache PageTree
@@ -374,12 +384,11 @@ public class PDFMergerUtility
                 {
                     if (sourceObject instanceof File)
                     {
-                        sourceDoc = Loader.loadPDF((File) sourceObject, memUsageSetting);
+                        sourceDoc = Loader.loadPDF((File) sourceObject);
                     }
                     else
                     {
-                        sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject,
-                                memUsageSetting);
+                        sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject);
                     }
                     for (PDPage page : sourceDoc.getPages())
                     {
@@ -421,15 +430,14 @@ public class PDFMergerUtility
     
     
     /**
-     * Merge the list of source documents, saving the result in the destination
-     * file.
+     * Merge the list of source documents, saving the result in the destination file.
      *
-     * @param memUsageSetting defines how memory is used for buffering PDF streams;
-     *                        in case of <code>null</code> unrestricted main memory is used 
+     * @param streamCacheCreateFunction a function to create an instance of a stream cache; in case of <code>null</code>
+     * unrestricted main memory is used
      * 
      * @throws IOException If there is an error saving the document.
      */
-    private void legacyMergeDocuments(MemoryUsageSetting memUsageSetting,
+    private void legacyMergeDocuments(StreamCacheCreateFunction streamCacheCreateFunction,
             CompressParameters compressParameters) throws IOException
     {
         if (!sources.isEmpty())
@@ -441,22 +449,20 @@ public class PDFMergerUtility
             // - there's a way to see which errors occurred
 
             List<PDDocument> tobeclosed = new ArrayList<>(sources.size());
-            MemoryUsageSetting partitionedMemSetting = memUsageSetting != null ? 
-                    memUsageSetting.getPartitionedCopy(sources.size()+1) :
-                    MemoryUsageSetting.setupMainMemoryOnly();
-            try (PDDocument destination = new PDDocument(partitionedMemSetting))
+            StreamCacheCreateFunction strmCacheFunc = streamCacheCreateFunction != null ? streamCacheCreateFunction
+                    : IOUtils.createMemoryOnlyStreamCache();
+            try (PDDocument destination = new PDDocument(strmCacheFunc))
             {
                 for (Object sourceObject : sources)
                 {
                     PDDocument sourceDoc = null;
                     if (sourceObject instanceof File)
                     {
-                        sourceDoc = Loader.loadPDF((File) sourceObject, partitionedMemSetting);
+                        sourceDoc = Loader.loadPDF((File) sourceObject);
                     }
                     else
                     {
-                        sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject,
-                                partitionedMemSetting);
+                        sourceDoc = Loader.loadPDF((RandomAccessRead) sourceObject);
                     }
                     tobeclosed.add(sourceDoc);
                     appendDocument(destination, sourceDoc);
@@ -1171,11 +1177,11 @@ public class PDFMergerUtility
     private void mergeRoleMap(PDStructureTreeRoot srcStructTree, PDStructureTreeRoot destStructTree)
     {
         COSDictionary srcDict = srcStructTree.getCOSObject().getCOSDictionary(COSName.ROLE_MAP);
-        COSDictionary destDict = destStructTree.getCOSObject().getCOSDictionary(COSName.ROLE_MAP);
         if (srcDict == null)
         {
             return;
         }
+        COSDictionary destDict = destStructTree.getCOSObject().getCOSDictionary(COSName.ROLE_MAP);
         if (destDict == null)
         {
             destStructTree.getCOSObject().setItem(COSName.ROLE_MAP, srcDict); // clone not needed
@@ -1269,7 +1275,7 @@ public class PDFMergerUtility
         List<PDField> srcFields = srcAcroForm.getFields();
         COSArray destFields;
 
-        if (srcFields != null && !srcFields.isEmpty())
+        if (!srcFields.isEmpty())
         {
             // if a form is merged multiple times using PDFBox the newly generated
             // fields starting with dummyFieldName may already exist. We need to determine the last unique 
@@ -1280,7 +1286,7 @@ public class PDFMergerUtility
             for (PDField destField : destAcroForm.getFieldTree())
             {
                 String fieldName = destField.getPartialName();
-                if (fieldName.startsWith(prefix))
+                if (fieldName != null && fieldName.startsWith(prefix))
                 {
                     String suffix = fieldName.substring(prefixLength);
                     if (suffix.matches("\\d+"))

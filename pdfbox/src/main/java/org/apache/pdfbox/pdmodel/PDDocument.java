@@ -47,8 +47,8 @@ import org.apache.pdfbox.cos.COSObject;
 import org.apache.pdfbox.cos.COSObjectKey;
 import org.apache.pdfbox.cos.COSUpdateInfo;
 import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.io.MemoryUsageSetting;
 import org.apache.pdfbox.io.RandomAccessRead;
+import org.apache.pdfbox.io.RandomAccessStreamCache.StreamCacheCreateFunction;
 import org.apache.pdfbox.pdfwriter.COSWriter;
 import org.apache.pdfbox.pdfwriter.compress.CompressParameters;
 import org.apache.pdfbox.pdmodel.common.COSArrayList;
@@ -157,18 +157,17 @@ public class PDDocument implements Closeable
      */
     public PDDocument()
     {
-        this(MemoryUsageSetting.setupMainMemoryOnly());
+        this(IOUtils.createMemoryOnlyStreamCache());
     }
 
     /**
-     * Creates an empty PDF document.
-     * You need to add at least one page for the document to be valid.
+     * Creates an empty PDF document. You need to add at least one page for the document to be valid.
      *
-     * @param memUsageSetting defines how memory is used for buffering PDF streams 
+     * @param streamCacheCreateFunction a function to create an instance of a stream cache for buffering PDF streams
      */
-    public PDDocument(MemoryUsageSetting memUsageSetting)
+    public PDDocument(StreamCacheCreateFunction streamCacheCreateFunction)
     {
-        document = new COSDocument(memUsageSetting);
+        document = new COSDocument(streamCacheCreateFunction);
         document.getDocumentState().setParsing(false);
         pdfSource = null;
 
@@ -428,10 +427,11 @@ public class PDDocument implements Closeable
         if (visualSignature == null)
         {
             prepareNonVisibleSignature(firstWidget);
-            return;
         }
-
-        prepareVisibleSignature(firstWidget, acroForm, visualSignature);
+        else
+        {
+            prepareVisibleSignature(firstWidget, acroForm, visualSignature);
+        }
 
         // Create Annotation / Field for signature
         List<PDAnnotation> annotations = page.getAnnotations();
@@ -530,6 +530,21 @@ public class PDDocument implements Closeable
         return false;
     }
 
+    private void prepareNonVisibleSignature(PDAnnotationWidget firstWidget)
+    {
+        // "Signature fields that are not intended to be visible shall
+        // have an annotation rectangle that has zero height and width."
+        // Set rectangle for non-visual signature to rectangle array [ 0 0 0 0 ]
+        firstWidget.setRectangle(new PDRectangle());
+        
+        // The visual appearance must also exist for an invisible signature but may be empty.
+        PDAppearanceDictionary appearanceDictionary = new PDAppearanceDictionary();
+        PDAppearanceStream appearanceStream = new PDAppearanceStream(this);
+        appearanceStream.setBBox(new PDRectangle());
+        appearanceDictionary.setNormalAppearance(appearanceStream);
+        firstWidget.setAppearance(appearanceDictionary);
+    }
+
     private void prepareVisibleSignature(PDAnnotationWidget firstWidget, PDAcroForm acroForm, 
             COSDocument visualSignature)
     {
@@ -622,21 +637,6 @@ public class PDDocument implements Closeable
         }
     }
 
-    private void prepareNonVisibleSignature(PDAnnotationWidget firstWidget)
-    {
-        // "Signature fields that are not intended to be visible shall
-        // have an annotation rectangle that has zero height and width."
-        // Set rectangle for non-visual signature to rectangle array [ 0 0 0 0 ]
-        firstWidget.setRectangle(new PDRectangle());
-        
-        // The visual appearance must also exist for an invisible signature but may be empty.
-        PDAppearanceDictionary appearanceDictionary = new PDAppearanceDictionary();
-        PDAppearanceStream appearanceStream = new PDAppearanceStream(this);
-        appearanceStream.setBBox(new PDRectangle());
-        appearanceDictionary.setNormalAppearance(appearanceStream);
-        firstWidget.setAppearance(appearanceDictionary);
-    }
-
     /**
      * Remove the page from the document.
      * 
@@ -685,6 +685,7 @@ public class PDDocument implements Closeable
     public PDPage importPage(PDPage page) throws IOException
     {
         PDPage importedPage = new PDPage(new COSDictionary(page.getCOSObject()), resourceCache);
+        importedPage.getCOSObject().removeItem(COSName.PARENT);
         PDStream dest = new PDStream(this, page.getContents(), COSName.FLATE_DECODE);
         importedPage.setContents(dest);
         addPage(importedPage);
@@ -710,7 +711,7 @@ public class PDDocument implements Closeable
         List<COSObjectKey> indirectObjectKeys = new ArrayList<>();
         importedPage.getCOSObject().getIndirectObjectKeys(indirectObjectKeys);
         long highestImportedNumber = indirectObjectKeys.stream().map(COSObjectKey::getNumber)
-                    .max(Long::compare).get();
+                .max(Long::compare).orElse(0L);
         long highestXRefObjectNumber = getDocument().getHighestXRefObjectNumber();
         getDocument().setHighestXRefObjectNumber(
                 Math.max(highestXRefObjectNumber, highestImportedNumber));
@@ -886,11 +887,11 @@ public class PDDocument implements Closeable
     }
 
     /**
-     * For internal PDFBox use when creating PDF documents: register a TrueTypeFont to make sure it
-     * is closed when the PDDocument is closed to avoid memory leaks. Users don't have to call this
-     * method, it is done by the appropriate PDFont classes.
+     * For internal PDFBox use when creating PDF documents: register a TrueTypeFont to make sure it is closed when the
+     * PDDocument is closed to avoid memory leaks. Users don't have to call this method, it is done by the appropriate
+     * PDFont classes.
      *
-     * @param ttf
+     * @param ttf the TrueTypeFont to be registered
      */
     public void registerTrueTypeFontForClosing(TrueTypeFont ttf)
     {
@@ -1048,6 +1049,12 @@ public class PDDocument implements Closeable
      * you are required to keep the current revision and append the changes. A typical use case is changing a signed
      * file without invalidating the signature.
      * <p>
+     * If your modification includes annotations, make sure these link back to their page by calling
+     * {@link PDAnnotation#setPage(PDPage)}. Although this is optional,
+     * not doing it
+     * <a href="https://stackoverflow.com/questions/74836898/">can cause trouble when PDFs get
+     * signed</a>. (PDFBox already does this for signature widget annotations)
+     * <p>
      * Don't use the input file as target as this will produce a corrupted file.
      *
      * @param output stream to write to. It will be closed when done. It <i><b>must never</b></i> point to the source
@@ -1076,6 +1083,12 @@ public class PDDocument implements Closeable
      * invalidating the signature. To know which objects are getting changed, you need to have some understanding of the
      * PDF specification, and look at the saved file with an editor to verify that you are updating the correct objects.
      * You should also inspect the page and document structures of the file with PDFDebugger.
+     * <p>
+     * If your modification includes annotations, make sure these link back to their page by calling
+     * {@link PDAnnotation#setPage(PDPage)}. Although this is optional,
+     * not doing it
+     * <a href="https://stackoverflow.com/questions/74836898/">can cause trouble when PDFs get
+     * signed</a>. (PDFBox already does this for signature widget annotations)
      * <p>
      * Don't use the input file as target as this will produce a corrupted file.
      *
@@ -1410,6 +1423,8 @@ public class PDDocument implements Closeable
 
     /**
      * Returns the resource cache associated with this document, or null if there is none.
+     * 
+     * @return the resource cache of the document
      */
     public ResourceCache getResourceCache()
     {

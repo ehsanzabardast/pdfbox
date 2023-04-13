@@ -30,17 +30,9 @@ public final class COSObjectKey implements Comparable<COSObjectKey>
     // The lowest 16 bits hold the generation 0-65535
     // The rest is used for the number (even though 34 bit are sufficient for 10 digits)
     private final long numberAndGeneration;
+    // index within a compressed object stream if applicable otherwise -1
+    private final int streamIndex;
     
-    /**
-     * Constructor.
-     *
-     * @param object The object that this key will represent.
-     */
-    public COSObjectKey(COSObject object)
-    {
-        this(object.getObjectNumber(), object.getGenerationNumber());
-    }
-
     /**
      * Constructor.
      *
@@ -58,6 +50,40 @@ public final class COSObjectKey implements Comparable<COSObjectKey>
             throw new IllegalArgumentException("Generation number must not be a negative value");
         }
         numberAndGeneration = num << NUMBER_OFFSET | (gen & GENERATION_MASK);
+        streamIndex = -1;
+    }
+
+    /**
+     * Constructor.
+     *
+     * @param num The object number.
+     * @param gen The object generation number.
+     * @param index The index within a compressed object stream
+     */
+    public COSObjectKey(long num, int gen, int index)
+    {
+        if (num < 0)
+        {
+            throw new IllegalArgumentException("Object number must not be a negative value");
+        }
+        if (gen < 0)
+        {
+            throw new IllegalArgumentException("Generation number must not be a negative value");
+        }
+        numberAndGeneration = computeInternalHash(num, gen);
+        this.streamIndex = index;
+    }
+
+    /**
+     * Calculate the internal hash value for the given object number and generation number.
+     * 
+     * @param num the object number
+     * @param gen the generation number
+     * @return the internal hash for the given values
+     */
+    public static final long computeInternalHash(long num, int gen)
+    {
+        return num << NUMBER_OFFSET | (gen & GENERATION_MASK);
     }
 
     /**
@@ -89,6 +115,16 @@ public final class COSObjectKey implements Comparable<COSObjectKey>
     public long getNumber()
     {
         return numberAndGeneration >>> NUMBER_OFFSET;
+    }
+
+    /**
+     * The index within a compressed object stream.
+     * 
+     * @return the index within a compressed object stream if applicable otherwise -1
+     */
+    public int getStreamIndex()
+    {
+        return streamIndex;
     }
 
     /**

@@ -214,6 +214,8 @@ public class PageDrawer extends PDFGraphicsStreamEngine
     
     /**
      * Returns the parent renderer.
+     * 
+     * @return the parent renderer
      */
     public final PDFRenderer getRenderer()
     {
@@ -222,6 +224,8 @@ public class PageDrawer extends PDFGraphicsStreamEngine
 
     /**
      * Returns the underlying Graphics2D. May be null if drawPage has not yet been called.
+     * 
+     * @return the underlying Graphics2D
      */
     protected final Graphics2D getGraphics()
     {
@@ -230,6 +234,8 @@ public class PageDrawer extends PDFGraphicsStreamEngine
 
     /**
      * Returns the current line path. This is reset to empty after each fill/stroke.
+     * 
+     * @return the current line path
      */
     protected final GeneralPath getLinePath()
     {
@@ -328,7 +334,9 @@ public class PageDrawer extends PDFGraphicsStreamEngine
      * Returns an AWT paint for the given PDColor.
      * 
      * @param color The color to get a paint for. This can be an actual color or a pattern.
-     * @throws IOException
+     * @return an AWT paint for the given PDColor
+     * 
+     * @throws IOException if the AWT paint could not be created
      */
     protected Paint getPaint(PDColor color) throws IOException
     {
@@ -672,7 +680,7 @@ public class PageDrawer extends PDFGraphicsStreamEngine
      * <a href="https://issues.apache.org/jira/browse/PDFBOX-5093">PDFBOX-5093</a> for more.
      *
      * @return The non-stroking AWT Paint.
-     * @throws IOException
+     * @throws IOException if the non-stroking AWT Paint could not be created
      */
     protected final Paint getNonStrokingPaint() throws IOException
     {
@@ -1057,21 +1065,8 @@ public class PageDrawer extends PDFGraphicsStreamEngine
                 Paint paint = getNonStrokingPaint();
                 Rectangle2D unitRect = new Rectangle2D.Float(0, 0, 1, 1);
                 Rectangle2D bounds = at.createTransformedShape(unitRect).getBounds2D();
-                GraphicsConfiguration deviceConfiguration = graphics.getDeviceConfiguration();
-                int w;
-                int h;
-                if (deviceConfiguration != null && deviceConfiguration.getBounds() != null)
-                {
-                    // PDFBOX-4690: bounds doesn't need to be larger than device bounds (OOM risk)
-                    Rectangle deviceBounds = deviceConfiguration.getBounds();
-                    w = (int) Math.ceil(Math.min(bounds.getWidth(), deviceBounds.getWidth()));
-                    h = (int) Math.ceil(Math.min(bounds.getHeight(), deviceBounds.getHeight()));
-                }
-                else
-                {
-                    w = (int) Math.ceil(bounds.getWidth());
-                    h = (int) Math.ceil(bounds.getHeight());
-                }
+                int w = (int) Math.ceil(bounds.getWidth());
+                int h = (int) Math.ceil(bounds.getHeight());
                 BufferedImage renderedPaint = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
                 Graphics2D g = (Graphics2D) renderedPaint.getGraphics();
                 g.translate(-bounds.getMinX(), -bounds.getMinY());
@@ -1192,15 +1187,15 @@ public class PageDrawer extends PDFGraphicsStreamEngine
     }
 
     /**
-     * Calculated the subsampling frequency for a given PDImage based on the current transformation
-     * and its calculated transform
+     * Calculates the subsampling frequency for a given PDImage based on the current transformation
+     * and its calculated transform. Extend this method if you want to use your own strategy.
      *
      * @param pdImage PDImage to be drawn
      * @param at Transform that will be applied to the image when drawing
      * @return The rounded-down ratio of image pixels to drawn pixels. Returned value will always be
-     * >=1.
+     * &gt;=1.
      */
-    private int getSubsampling(PDImage pdImage, AffineTransform at)
+    protected int getSubsampling(PDImage pdImage, AffineTransform at)
     {
         // calculate subsampling according to the resulting image size
         double scale = Math.abs(at.getDeterminant() * xform.getDeterminant());
@@ -1528,9 +1523,9 @@ public class PageDrawer extends PDFGraphicsStreamEngine
     /**
      * For advanced users, to extract the transparency group into a separate graphics device.
      * 
-     * @param form
-     * @param graphics
-     * @throws IOException 
+     * @param form the transparency group to be extracted
+     * @param graphics the target graphics device
+     * @throws IOException if the transparency group could not be extracted
      */
     protected void showTransparencyGroupOnGraphics(PDTransparencyGroup form, Graphics2D graphics)
         throws IOException
@@ -1939,11 +1934,11 @@ public class PageDrawer extends PDFGraphicsStreamEngine
             nestedHiddenOCGCount++;
             return;
         }
-        if (tag == null || getPage().getResources() == null)
+        if (tag == null || getResources() == null)
         {
             return;
         }
-        if (isHiddenOCG(getPage().getResources().getProperties(tag)))
+        if (isHiddenOCG(getResources().getProperties(tag)))
         {
             nestedHiddenOCGCount = 1;
         }

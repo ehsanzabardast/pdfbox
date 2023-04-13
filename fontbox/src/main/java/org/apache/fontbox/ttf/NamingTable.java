@@ -79,7 +79,7 @@ public class NamingTable extends TTFTable
                 continue;
             }
             
-            data.seek(getOffset() + (2*3)+numberOfNameRecords*2*6+nr.getStringOffset());
+            data.seek(getOffset() + (2L*3)+numberOfNameRecords*2L*6+nr.getStringOffset());
             int platform = nr.getPlatformId();
             int encoding = nr.getPlatformEncodingId();
             Charset charset = StandardCharsets.ISO_8859_1;
@@ -118,26 +118,11 @@ public class NamingTable extends TTFTable
         for (NameRecord nr : nameRecords)
         {
             // name id
-            Map<Integer, Map<Integer, Map<Integer, String>>> platformLookup = lookupTable.get(nr.getNameId());
-            if (platformLookup == null)
-            {
-                platformLookup = new HashMap<>(); 
-                lookupTable.put(nr.getNameId(), platformLookup);
-            }
+            Map<Integer, Map<Integer, Map<Integer, String>>> platformLookup = lookupTable.computeIfAbsent(nr.getNameId(), k -> new HashMap<>());
             // platform id
-            Map<Integer, Map<Integer, String>> encodingLookup = platformLookup.get(nr.getPlatformId());
-            if (encodingLookup == null)
-            {
-                encodingLookup = new HashMap<>();
-                platformLookup.put(nr.getPlatformId(), encodingLookup);
-            }
+            Map<Integer, Map<Integer, String>> encodingLookup = platformLookup.computeIfAbsent(nr.getPlatformId(), k -> new HashMap<>());
             // encoding id
-            Map<Integer, String> languageLookup = encodingLookup.get(nr.getPlatformEncodingId());
-            if (languageLookup == null)
-            {
-                languageLookup = new HashMap<>();
-                encodingLookup.put(nr.getPlatformEncodingId(), languageLookup);
-            }
+            Map<Integer, String> languageLookup = encodingLookup.computeIfAbsent(nr.getPlatformEncodingId(), k -> new HashMap<>(1));
             // language id / string
             languageLookup.put(nr.getLanguageId(), nr.getString());
         }

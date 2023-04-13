@@ -64,7 +64,7 @@ public class PDFText2HTML extends PDFTextStripper
                 + "\"http://www.w3.org/TR/html4/loose.dtd\">\n");
         buf.append("<html><head>");
         buf.append("<title>").append(escape(getTitle())).append("</title>\n");
-        buf.append("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=\"UTF-8\">\n");
+        buf.append("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n");
         buf.append("</head>\n");
         buf.append("<body>\n");
         super.writeString(buf.toString());
@@ -220,7 +220,7 @@ public class PDFText2HTML extends PDFTextStripper
         // write non-ASCII as named entities
         if ((character < 32) || (character > 126))
         {
-            builder.append("&#").append((int) character).append(";");
+            builder.append("&#").append((int) character).append(';');
         }
         else
         {

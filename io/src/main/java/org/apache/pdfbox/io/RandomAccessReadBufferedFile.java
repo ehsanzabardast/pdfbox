@@ -23,6 +23,8 @@ import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Provides random access to portions of a file combined with buffered reading of content. Start of next bytes to read
@@ -38,6 +40,9 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
     private static final int PAGE_SIZE = 1 << PAGE_SIZE_SHIFT;
     private static final long PAGE_OFFSET_MASK = -1L << PAGE_SIZE_SHIFT;
     private static final int MAX_CACHED_PAGES = 1000;
+
+    // map holding all copies of the current buffered file
+    private final ConcurrentMap<Long, RandomAccessReadBufferedFile> rafCopies = new ConcurrentHashMap<>();
 
     private ByteBuffer lastRemovedCachePage = null;
 
@@ -225,6 +230,8 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
     @Override
     public void close() throws IOException
     {
+        rafCopies.values().forEach(IOUtils::closeQuietly);
+        rafCopies.clear();
         fileChannel.close();
         pageCache.clear();
         isClosed = true;
@@ -258,7 +265,14 @@ public class RandomAccessReadBufferedFile implements RandomAccessRead
     public RandomAccessReadView createView(long startPosition, long streamLength) throws IOException
     {
         checkClosed();
-        return new RandomAccessReadView(new RandomAccessReadBufferedFile(file), startPosition,
-                streamLength, true);
+        Long currentThreadID = Thread.currentThread().getId();
+        RandomAccessReadBufferedFile randomAccessReadBufferedFile = rafCopies.get(currentThreadID);
+        if (randomAccessReadBufferedFile == null || randomAccessReadBufferedFile.isClosed())
+        {
+            randomAccessReadBufferedFile = new RandomAccessReadBufferedFile(file);
+            rafCopies.put(currentThreadID, randomAccessReadBufferedFile);
+        }
+        return new RandomAccessReadView(randomAccessReadBufferedFile, startPosition, streamLength);
     }
+
 }

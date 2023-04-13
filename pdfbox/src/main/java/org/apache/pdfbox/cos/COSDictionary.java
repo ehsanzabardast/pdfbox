@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
@@ -51,6 +52,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     private static final Log LOG = LogFactory.getLog(COSDictionary.class);
 
     private static final String PATH_SEPARATOR = "/";
+    private static final int MAP_THRESHOLD = 1000;
 
     /**
      * The name-value pairs of this dictionary. The pairs are kept in the order they were added to the dictionary.
@@ -204,7 +206,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         }
         else
         {
-            if (items instanceof SmallMap && items.size() >= 100)
+            if (items instanceof SmallMap && items.size() >= MAP_THRESHOLD)
             {
                 items = new LinkedHashMap<>(items);
             }
@@ -1231,10 +1233,10 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
     }
 
     /**
-     * Convenience method that calls
-     * {@link Map#forEach(java.util.function.BiConsumer) Map.forEach(BiConsumer)}.
+     * Convenience method that calls {@link Map#forEach(java.util.function.BiConsumer) Map.forEach(BiConsumer)}.
      *
-     * @param action
+     * @param action The action to be performed for each entry
+     * 
      */
     public void forEach(BiConsumer<? super COSName, ? super COSBase> action)
     {
@@ -1271,7 +1273,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      */
     public void addAll(COSDictionary dict)
     {
-        if (items instanceof SmallMap && items.size() + dict.items.size() >= 100)
+        if (items instanceof SmallMap && items.size() + dict.items.size() >= MAP_THRESHOLD)
         {
             items = new LinkedHashMap<>(items);
         }
@@ -1422,7 +1424,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
 
     /**
      * Collects all indirect objects numbers within this dictionary and all included dictionaries. It is used to avoid
-     * mixed up object numbers wwhen importing an existing page to another pdf.
+     * mixed up object numbers when importing an existing page to another pdf.
      * 
      * Expert use only. You might run into an endless recursion if choosing a wrong starting point.
      * 
@@ -1431,35 +1433,57 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      */
     public void getIndirectObjectKeys(List<COSObjectKey> indirectObjects)
     {
-        // avoid endless recursions
-        if (indirectObjects == null || (getKey() != null && indirectObjects.contains(getKey())))
+        if (indirectObjects == null)
         {
             return;
         }
-        for (COSBase cosBase : items.values())
+        COSObjectKey key = getKey();
+        if (key != null)
         {
-            COSDictionary dictionary = null;
+            // avoid endless recursions
+            if (indirectObjects.contains(key))
+            {
+                return;
+            }
+            else
+            {
+                indirectObjects.add(key);
+            }
+        }
+        for (Entry<COSName, COSBase> entry : items.entrySet())
+        {
+            COSBase cosBase = entry.getValue();
+            COSObjectKey cosBaseKey = cosBase.getKey();
+            // avoid endless recursions
+            if (COSName.PARENT.equals(entry.getKey())
+                    || (cosBaseKey != null && indirectObjects.contains(cosBaseKey)))
+            {
+                continue;
+            }
             if (cosBase instanceof COSObject)
             {
-                // add indirect object key and dereference object
-                if (cosBase.getKey() != null && !indirectObjects.contains(cosBase.getKey()))
+                // dereference object
+                COSBase referencedObject = ((COSObject) cosBase).getObject();
+                if (referencedObject instanceof COSDictionary)
                 {
-                    indirectObjects.add(cosBase.getKey());
-                    COSBase referencedObject = ((COSObject) cosBase).getObject();
-                    if (referencedObject instanceof COSDictionary)
-                    {
-                        dictionary = (COSDictionary) referencedObject;
-                    }
+                    // descend to included dictionary to collect all included indirect objects
+                    ((COSDictionary) referencedObject).getIndirectObjectKeys(indirectObjects);
+                }
+                else if (referencedObject instanceof COSArray)
+                {
+                    // descend to included array to collect all included indirect objects
+                    ((COSArray) referencedObject).getIndirectObjectKeys(indirectObjects);
                 }
             }
             else if (cosBase instanceof COSDictionary)
             {
-                dictionary = (COSDictionary) cosBase;
-            }
-            if (dictionary != null)
-            {
                 // descend to included dictionary to collect all included indirect objects
-                dictionary.getIndirectObjectKeys(indirectObjects);
+                ((COSDictionary) cosBase).getIndirectObjectKeys(indirectObjects);
+            }
+            else if (cosBase instanceof COSArray)
+            {
+                // descend to included array to collect all included indirect objects
+                ((COSArray) cosBase).getIndirectObjectKeys(indirectObjects);
             }
         }
     }

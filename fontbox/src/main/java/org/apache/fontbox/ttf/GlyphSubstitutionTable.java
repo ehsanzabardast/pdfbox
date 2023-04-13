@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -37,13 +38,11 @@ import org.apache.fontbox.ttf.table.common.CoverageTableFormat2;
 import org.apache.fontbox.ttf.table.common.FeatureListTable;
 import org.apache.fontbox.ttf.table.common.FeatureRecord;
 import org.apache.fontbox.ttf.table.common.FeatureTable;
-import org.apache.fontbox.ttf.table.common.LangSysRecord;
 import org.apache.fontbox.ttf.table.common.LangSysTable;
 import org.apache.fontbox.ttf.table.common.LookupListTable;
 import org.apache.fontbox.ttf.table.common.LookupSubTable;
 import org.apache.fontbox.ttf.table.common.LookupTable;
 import org.apache.fontbox.ttf.table.common.RangeRecord;
-import org.apache.fontbox.ttf.table.common.ScriptRecord;
 import org.apache.fontbox.ttf.table.common.ScriptTable;
 import org.apache.fontbox.ttf.table.gsub.LigatureSetTable;
 import org.apache.fontbox.ttf.table.gsub.LigatureTable;
@@ -76,7 +75,6 @@ public class GlyphSubstitutionTable extends TTFTable
 
     GlyphSubstitutionTable()
     {
-        super();
     }
 
     @Override
@@ -105,6 +103,8 @@ public class GlyphSubstitutionTable extends TTFTable
 
         gsubData = glyphSubstitutionDataExtractor
                 .getGsubData(scriptList, featureListTable, lookupListTable);
+
+        initialized = true;
     }
 
     private Map<String, ScriptTable> readScriptList(TTFDataStream data, long offset)
@@ -112,9 +112,9 @@ public class GlyphSubstitutionTable extends TTFTable
     {
         data.seek(offset);
         int scriptCount = data.readUnsignedShort();
-        ScriptTable[] scriptTables= new ScriptTable[scriptCount];
         int[] scriptOffsets = new int[scriptCount];
         String[] scriptTags = new String[scriptCount];
+        Map<String, ScriptTable> resultScriptList = new LinkedHashMap<>(scriptCount);
         for (int i = 0; i < scriptCount; i++)
         {
             scriptTags[i] = data.readString(4);
@@ -122,13 +122,8 @@ public class GlyphSubstitutionTable extends TTFTable
         }
         for (int i = 0; i < scriptCount; i++)
         {
-            scriptTables[i] = readScriptTable(data, offset + scriptOffsets[i]);
-        }
-        Map<String, ScriptTable> resultScriptList = new LinkedHashMap<>(scriptCount);
-        for (int i = 0; i < scriptCount; i++)
-        {
-            ScriptRecord scriptRecord = new ScriptRecord(scriptTags[i], scriptTables[i]);
-            resultScriptList.put(scriptRecord.getScriptTag(), scriptRecord.getScriptTable());
+            ScriptTable scriptTable = readScriptTable(data, offset + scriptOffsets[i]);
+            resultScriptList.put(scriptTags[i], scriptTable);
         }
         return Collections.unmodifiableMap(resultScriptList);
     }
@@ -138,7 +133,6 @@ public class GlyphSubstitutionTable extends TTFTable
         data.seek(offset);
         int defaultLangSys = data.readUnsignedShort();
         int langSysCount = data.readUnsignedShort();
-        LangSysRecord[] langSysRecords = new LangSysRecord[langSysCount];
         String[] langSysTags = new String[langSysCount];
         int[] langSysOffsets = new int[langSysCount];
         for (int i = 0; i < langSysCount; i++)
@@ -161,16 +155,11 @@ public class GlyphSubstitutionTable extends TTFTable
         {
             defaultLangSysTable = readLangSysTable(data, offset + defaultLangSys);
         }
+        Map<String, LangSysTable> langSysTables = new LinkedHashMap<>(langSysCount);
         for (int i = 0; i < langSysCount; i++)
         {
             LangSysTable langSysTable = readLangSysTable(data, offset + langSysOffsets[i]);
-            langSysRecords[i] = new LangSysRecord(langSysTags[i], langSysTable);
-        }
-        Map<String, LangSysTable> langSysTables = new LinkedHashMap<>(langSysCount);
-        for (LangSysRecord langSysRecord : langSysRecords)
-        {
-            langSysTables.put(langSysRecord.getLangSysTag(),
-                    langSysRecord.getLangSysTable());
+            langSysTables.put(langSysTags[i], langSysTable);
         }
         return new ScriptTable(defaultLangSysTable, Collections.unmodifiableMap(langSysTables));
     }
@@ -264,10 +253,10 @@ public class GlyphSubstitutionTable extends TTFTable
         int lookupType = data.readUnsignedShort();
         int lookupFlag = data.readUnsignedShort();
         int subTableCount = data.readUnsignedShort();
-        int[] subTableOffets = new int[subTableCount];
+        int[] subTableOffsets = new int[subTableCount];
         for (int i = 0; i < subTableCount; i++)
         {
-            subTableOffets[i] = data.readUnsignedShort();
+            subTableOffsets[i] = data.readUnsignedShort();
         }
 
         int markFilteringSet;
@@ -287,7 +276,7 @@ public class GlyphSubstitutionTable extends TTFTable
             // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#SS
             for (int i = 0; i < subTableCount; i++)
             {
-                subTables[i] = readLookupSubTable(data, offset + subTableOffets[i]);
+                subTables[i] = readLookupSubTable(data, offset + subTableOffsets[i]);
             }
             break;
         case 4:
@@ -295,7 +284,7 @@ public class GlyphSubstitutionTable extends TTFTable
             // https://docs.microsoft.com/en-us/typography/opentype/spec/gsub#LS
             for (int i = 0; i < subTableCount; i++)
             {
-                subTables[i] = readLigatureSubstitutionSubtable(data, offset + subTableOffets[i]);
+                subTables[i] = readLigatureSubstitutionSubtable(data, offset + subTableOffsets[i]);
             }
             break;
         default:
@@ -635,17 +624,17 @@ public class GlyphSubstitutionTable extends TTFTable
     }
 
     /**
-     * Apply glyph substitutions to the supplied gid. The applicable substitutions are determined by
-     * the {@code scriptTags} which indicate the language of the gid, and by the list of
-     * {@code enabledFeatures}.
+     * Apply glyph substitutions to the supplied gid. The applicable substitutions are determined by the
+     * {@code scriptTags} which indicate the language of the gid, and by the list of {@code enabledFeatures}.
      *
-     * To ensure that a single gid isn't mapped to multiple substitutions, subsequent invocations
-     * with the same gid will return the same result as the first, regardless of script or enabled
-     * features.
+     * To ensure that a single gid isn't mapped to multiple substitutions, subsequent invocations with the same gid will
+     * return the same result as the first, regardless of script or enabled features.
      *
      * @param gid GID
      * @param scriptTags Script tags applicable to the gid (see {@link OpenTypeScript})
      * @param enabledFeatures list of features to apply
+     * 
+     * @return the id of the glyph substituion
      */
     public int getSubstitution(int gid, String[] scriptTags, List<String> enabledFeatures)
     {
@@ -675,13 +664,14 @@ public class GlyphSubstitutionTable extends TTFTable
     }
 
     /**
-     * For a substitute-gid (obtained from {@link #getSubstitution(int, String[], List)}), retrieve
-     * the original gid.
+     * For a substitute-gid (obtained from {@link #getSubstitution(int, String[], List)}), retrieve the original gid.
      *
-     * Only gids previously substituted by this instance can be un-substituted. If you are trying to
-     * unsubstitute before you substitute, something is wrong.
+     * Only gids previously substituted by this instance can be un-substituted. If you are trying to unsubstitute before
+     * you substitute, something is wrong.
      *
      * @param sgid Substitute GID
+     * 
+     * @return the original gid of a substitute-gid
      */
     public int getUnsubstitution(int sgid)
     {
@@ -694,9 +684,48 @@ public class GlyphSubstitutionTable extends TTFTable
         return gid;
     }
 
+    /**
+     * Returns a GsubData instance containing all scripts of the table.
+     * 
+     * @return the GsubData instance representing the table
+     */
     public GsubData getGsubData()
     {
         return gsubData;
+    }
+
+    /**
+     * Builds a new {@link GsubData} instance for given script tag. In contrast to neighbour {@link #getGsubData()}
+     * method, this one does not try to find the first supported language and load GSUB data for it. Instead, it fetches
+     * the data for the given {@code scriptTag} (if it's supported by the font) leaving the language unspecified. It
+     * means that even after successful reading of GSUB data, the actual glyph substitution may not work if there is no
+     * corresponding {@link org.apache.fontbox.ttf.gsub.GsubWorker} implementation for it.
+     *
+     * Note: This method performs searching on every invocation (no results are cached)
+     * 
+     * @param scriptTag a <a href="https://learn.microsoft.com/en-us/typography/opentype/spec/scripttags">script tag</a>
+     * for which the data is needed
+     * @return GSUB data for the given script or {@code null} if no such script in the font
+     */
+    public GsubData getGsubData(String scriptTag)
+    {
+        ScriptTable scriptTable = scriptList.get(scriptTag);
+        if (scriptTable == null)
+        {
+            return null;
+        }
+        return new GlyphSubstitutionDataExtractor().getGsubData(scriptTag, scriptTable,
+                featureListTable, lookupListTable);
+    }
+
+    /**
+     * @return a read-only view of the
+     * <a href="https://learn.microsoft.com/en-us/typography/opentype/spec/scripttags">script tags</a> for which this
+     * GSUB table has records
+     */
+    public Set<String> getSupportedScriptTags()
+    {
+        return Collections.unmodifiableSet(scriptList.keySet());
     }
 
     private RangeRecord readRangeRecord(TTFDataStream data) throws IOException

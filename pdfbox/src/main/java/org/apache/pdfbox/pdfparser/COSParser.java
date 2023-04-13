@@ -129,7 +129,7 @@ public class COSParser extends BaseParser implements ICOSParser
      * Intermediate cache. Contains all objects of already read compressed object streams. Objects are removed after
      * dereferencing them.
      */
-    private final Map<Long, Map<Long, COSBase>> decompressedObjects = new HashMap<>();
+    private final Map<Long, Map<COSObjectKey, COSBase>> decompressedObjects = new HashMap<>();
 
     /**
      * The security handler.
@@ -149,12 +149,6 @@ public class COSParser extends BaseParser implements ICOSParser
      */
     protected XrefTrailerResolver xrefTrailerResolver = new XrefTrailerResolver();
 
-
-    /**
-     * The prefix for the temp file being used. 
-     */
-    public static final String TMP_FILE_PREFIX = "tmpPDF";
-    
     /**
      * Default constructor.
      *
@@ -175,7 +169,8 @@ public class COSParser extends BaseParser implements ICOSParser
      * @param password password to be used for decryption.
      * @param keyStore key store to be used for decryption when using public key security
      * @param keyAlias alias to be used for decryption when using public key security
-     * 
+     *
+     * @throws IOException if the source data could not be read
      */
     public COSParser(RandomAccessRead source, String password, InputStream keyStore,
             String keyAlias) throws IOException
@@ -353,6 +348,7 @@ public class COSParser extends BaseParser implements ICOSParser
                         try
                         {
                             parseXrefObjStream(prev, false);
+                            document.setHasHybridXRef();
                         }
                         catch (IOException ex)
                         {
@@ -438,7 +434,15 @@ public class COSParser extends BaseParser implements ICOSParser
         COSDictionary dict = parseCOSDictionary(false);
         try (COSStream xrefStream = parseCOSStream(dict))
         {
-            parseXrefStream(xrefStream, objByteOffset, isStandalone);
+            // the cross reference stream of a hybrid xref table will be added to the existing one
+            // and we must not override the offset and the trailer
+            if ( isStandalone )
+            {
+                xrefTrailerResolver.nextXrefObj( objByteOffset, XRefType.STREAM );
+                xrefTrailerResolver.setTrailer(xrefStream);
+            }
+            PDFXrefStreamParser parser = new PDFXrefStreamParser(xrefStream, document);
+            parser.parse(xrefTrailerResolver);
         }
 
         return dict.getLong(COSName.PREV);
@@ -618,7 +622,6 @@ public class COSParser extends BaseParser implements ICOSParser
         COSBase referencedObject = null;
         if (offsetOrObjstmObNr != null)
         {
-
             if (offsetOrObjstmObNr > 0)
             {
                 referencedObject = parseFileObject(offsetOrObjstmObNr, objKey);
@@ -659,7 +662,7 @@ public class COSParser extends BaseParser implements ICOSParser
 
         // test to circumvent loops with broken documents
         if (requireExistingNotCompressedObj
-                && ((offsetOrObjstmObNr == null) || (offsetOrObjstmObNr <= 0)))
+                && (offsetOrObjstmObNr == null || offsetOrObjstmObNr <= 0))
         {
             throw new IOException("Object must be defined and must not be compressed object: "
                     + objKey.getNumber() + ":" + objKey.getGeneration());
@@ -667,23 +670,23 @@ public class COSParser extends BaseParser implements ICOSParser
         return offsetOrObjstmObNr;
     }
 
-    private COSBase parseFileObject(Long offsetOrObjstmObNr, final COSObjectKey objKey)
+    private COSBase parseFileObject(Long objOffset, final COSObjectKey objKey)
             throws IOException
     {
-        // ---- go to object start
-        source.seek(offsetOrObjstmObNr);
+        // jump to the object start
+        source.seek(objOffset);
 
-        // ---- we must have an indirect object
+        // an indirect object starts with the object number/generation number
         final long readObjNr = readObjectNumber();
         final int readObjGen = readGenerationNumber();
         readExpectedString(OBJ_MARKER, true);
 
-        // ---- consistency check
-        if ((readObjNr != objKey.getNumber()) || (readObjGen != objKey.getGeneration()))
+        // consistency check
+        if (readObjNr != objKey.getNumber() || readObjGen != objKey.getGeneration())
         {
             throw new IOException("XREF for " + objKey.getNumber() + ":"
                     + objKey.getGeneration() + " points to wrong object: " + readObjNr
-                    + ":" + readObjGen + " at offset " + offsetOrObjstmObNr);
+                    + ":" + readObjGen + " at offset " + objOffset);
         }
 
         skipSpaces();
@@ -714,7 +717,7 @@ public class COSParser extends BaseParser implements ICOSParser
                 // the combination of a dict and the stream/endstream
                 // forms a complete stream object
                 throw new IOException("Stream not preceded by dictionary (offset: "
-                        + offsetOrObjstmObNr + ").");
+                        + objOffset + ").");
             }
             skipSpaces();
             endObjectKey = readLine();
@@ -741,13 +744,13 @@ public class COSParser extends BaseParser implements ICOSParser
             if (isLenient)
             {
                 LOG.warn("Object (" + readObjNr + ":" + readObjGen + ") at offset "
-                        + offsetOrObjstmObNr + " does not end with 'endobj' but with '"
+                        + objOffset + " does not end with 'endobj' but with '"
                         + endObjectKey + "'");
             }
             else
             {
                 throw new IOException("Object (" + readObjNr + ":" + readObjGen
-                        + ") at offset " + offsetOrObjstmObNr
+                        + ") at offset " + objOffset
                         + " does not end with 'endobj' but with '" + endObjectKey + "'");
             }
         }
@@ -764,16 +767,15 @@ public class COSParser extends BaseParser implements ICOSParser
      */
     protected COSBase parseObjectStreamObject(long objstmObjNr, COSObjectKey key) throws IOException
     {
-        Map<Long, COSBase> streamObjects = decompressedObjects.computeIfAbsent(objstmObjNr,
+        Map<COSObjectKey, COSBase> streamObjects = decompressedObjects.computeIfAbsent(objstmObjNr,
                 n -> new HashMap<>());
         // did we already read the compressed object stream?
-        long keyNumber = key.getNumber();
-        COSBase objectStreamObject = streamObjects.remove(keyNumber);
+        COSBase objectStreamObject = streamObjects.remove(key);
         if (objectStreamObject != null)
         {
             return objectStreamObject;
         }
-        final COSObjectKey objKey = new COSObjectKey(objstmObjNr, 0);
+        final COSObjectKey objKey = getObjectKey(objstmObjNr, 0);
         final COSBase objstmBaseObj = document.getObjectFromPool(objKey).getObject();
         if (objstmBaseObj instanceof COSStream)
         {
@@ -781,18 +783,10 @@ public class COSParser extends BaseParser implements ICOSParser
             {
                 PDFObjectStreamParser parser = new PDFObjectStreamParser((COSStream) objstmBaseObj,
                         document);
-                for (Entry<Long, COSBase> entry : parser.parseAllObjects().entrySet())
-                {
-                    Long stmObjNumber = entry.getKey();
-                    if (keyNumber == stmObjNumber)
-                    {
-                        objectStreamObject = entry.getValue();
-                    }
-                    else
-                    {
-                        streamObjects.putIfAbsent(stmObjNumber, entry.getValue());
-                    }
-                }
+                Map<COSObjectKey, COSBase> allStreamObjects = parser.parseAllObjects();
+                objectStreamObject = allStreamObjects.remove(key);
+                allStreamObjects.entrySet().stream()
+                        .forEach(e -> streamObjects.putIfAbsent(e.getKey(), e.getValue()));
             }
             catch (IOException ex)
             {
@@ -1214,11 +1208,9 @@ public class COSParser extends BaseParser implements ICOSParser
                         xrefOffset.get(correctedKeyEntry.getKey()));
             }
         }
-        correctedKeys.entrySet().forEach(
-                // remove old invalid, as some might not be replaced
-                correctedKeyEntry -> xrefOffset.remove(correctedKeyEntry.getKey()));
-        correctedPointers.entrySet()
-                .forEach(pointer -> xrefOffset.put(pointer.getKey(), pointer.getValue()));
+        // remove old invalid, as some might not be replaced
+        correctedKeys.forEach((key, value) -> xrefOffset.remove(key));
+        xrefOffset.putAll(correctedPointers);
         return true;
     }
 
@@ -1769,27 +1761,6 @@ public class COSParser extends BaseParser implements ICOSParser
             }
         }
         return true;
-    }
-
-    /**
-     * Fills XRefTrailerResolver with data of given stream.
-     * Stream must be of type XRef.
-     * @param stream the stream to be read
-     * @param objByteOffset the offset to start at
-     * @param isStandalone should be set to true if the stream is not part of a hybrid xref table
-     * @throws IOException if there is an error parsing the stream
-     */
-    private void parseXrefStream(COSStream stream, long objByteOffset, boolean isStandalone) throws IOException
-    {
-        // the cross reference stream of a hybrid xref table will be added to the existing one
-        // and we must not override the offset and the trailer
-        if ( isStandalone )
-        {
-            xrefTrailerResolver.nextXrefObj( objByteOffset, XRefType.STREAM );
-            xrefTrailerResolver.setTrailer( stream );
-        }        
-        PDFXrefStreamParser parser = new PDFXrefStreamParser(stream, document);
-        parser.parse(xrefTrailerResolver);
     }
 
     /**

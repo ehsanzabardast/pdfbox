@@ -352,6 +352,8 @@ public abstract class PDAnnotation implements COSObjectable
     /**
      * Returns the annotations appearance state, which selects the applicable appearance stream from an appearance
      * subdictionary.
+     * 
+     * @return the annotations appearance state
      */
     public COSName getAppearanceState()
     {
@@ -392,6 +394,8 @@ public abstract class PDAnnotation implements COSObjectable
     /**
      * Returns the appearance stream for this annotation, if any. The annotation state is taken into account, if
      * present.
+     * 
+     * @return the appearance stream
      */
     public PDAppearanceStream getNormalAppearanceStream()
     {
@@ -851,8 +855,10 @@ public abstract class PDAnnotation implements COSObjectable
     }
 
     /**
-     * This will set the corresponding page for this annotation.
-     * 
+     * This will set the corresponding page for this annotation. This is optional but recommended.
+     * Not doing it <a href="https://stackoverflow.com/questions/74836898/">can cause trouble when
+     * PDFs get signed</a>.
+     *
      * @param page is the corresponding page
      */
     public void setPage(PDPage page)
@@ -874,11 +880,10 @@ public abstract class PDAnnotation implements COSObjectable
     }
 
     /**
-     * Create the appearance entry for this annotation. Not having it may prevent display in some
-     * viewers. This method is for overriding in subclasses, the default implementation does
-     * nothing.
+     * Create the appearance entry for this annotation. Not having it may prevent display in some viewers. This method
+     * is for overriding in subclasses, the default implementation does nothing.
      * 
-     * @param document
+     * @param document the related document
      */
     public void constructAppearances(PDDocument document)
     {

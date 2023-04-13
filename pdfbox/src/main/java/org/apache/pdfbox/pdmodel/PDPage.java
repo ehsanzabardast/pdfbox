@@ -212,6 +212,8 @@ public class PDPage implements COSObjectable, PDContentStream
 
     /**
      * Returns true if this page has one or more content streams.
+     * 
+     * @return true if the page has a non empty content stream, otherwise false
      */
     public boolean hasContents()
     {
@@ -299,8 +301,10 @@ public class PDPage implements COSObjectable, PDContentStream
     }
 
     /**
-     * A rectangle, expressed in default user space units, defining the boundaries of the physical
-     * medium on which the page is intended to be displayed or printed.
+     * A rectangle, expressed in default user space units, defining the boundaries of the physical medium on which the
+     * page is intended to be displayed or printed.
+     * 
+     * @return the media box of the page
      */
     public PDRectangle getMediaBox()
     {
@@ -339,9 +343,10 @@ public class PDPage implements COSObjectable, PDContentStream
     }
 
     /**
-     * A rectangle, expressed in default user space units, defining the visible region of default
-     * user space. When the page is displayed or printed, its contents are to be clipped (cropped)
-     * to this rectangle.
+     * A rectangle, expressed in default user space units, defining the visible region of default user space. When the
+     * page is displayed or printed, its contents are to be clipped (cropped) to this rectangle.
+     * 
+     * @return the cropbox of the page
      */
     public PDRectangle getCropBox()
     {
@@ -693,8 +698,12 @@ public class PDPage implements COSObjectable, PDContentStream
     }
 
     /**
-     * This will set the list of annotations.
-     * 
+     * This will set the list of annotations. Although this is optional, you should take care that
+     * any newly created annotations link back to this page by calling
+     * {@link PDAnnotation#setPage(org.apache.pdfbox.pdmodel.PDPage)}. Not doing it
+     * <a href="https://stackoverflow.com/questions/74836898/">can cause trouble when PDFs get
+     * signed</a>.
+     *
      * @param annotations The new list of annotations.
      */
     public void setAnnotations(List<PDAnnotation> annotations)
@@ -716,6 +725,8 @@ public class PDPage implements COSObjectable, PDContentStream
 
     /**
      * Returns the resource cache associated with this page, or null if there is none.
+     * 
+     * @return the resource cache of the current page
      */
     public ResourceCache getResourceCache()
     {
