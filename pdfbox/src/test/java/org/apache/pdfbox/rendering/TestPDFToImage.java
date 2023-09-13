@@ -62,9 +62,6 @@ public class TestPDFToImage
      */
     private static final Log LOG = LogFactory.getLog(TestPDFToImage.class);
 
-    static String inDir = "src/test/resources/input/rendering";
-    static String outDir = "target/test-output/rendering/";
-
     /**
      * Constructor.
      */
@@ -177,7 +174,6 @@ public class TestPDFToImage
         {
             new FileOutputStream(new File(outDir, file.getName() + ".parseerror")).close();
             document = Loader.loadPDF(file, (String) null);
-            String outputPrefix = outDir + '/' + file.getName() + "-";
             int numPages = document.getNumberOfPages();
             if (numPages < 1)
             {
@@ -187,20 +183,26 @@ public class TestPDFToImage
             else
             {
                 new File(outDir, file.getName() + ".parseerror").delete();
+                new File(outDir, file.getName() + ".parseerror").deleteOnExit();
             }
 
             LOG.info("Rendering: " + file.getName());
             PDFRenderer renderer = new PDFRenderer(document);
             for (int i = 0; i < numPages; i++)
             {
-                String fileName = outputPrefix + (i + 1) + ".png";
-                new FileOutputStream(new File(fileName + ".rendererror")).close();
+                String fileName = file.getName() + "-" + (i + 1) + ".png";
+                new FileOutputStream(new File(outDir, fileName + ".rendererror")).close();
                 BufferedImage image = renderer.renderImageWithDPI(i, 96); // Windows native DPI
-                new File(fileName + ".rendererror").delete();
+                new File(outDir, fileName + ".rendererror").delete();
+                new File(outDir, fileName + ".rendererror").deleteOnExit();
                 LOG.info("Writing: " + fileName);
-                new FileOutputStream(new File(fileName + ".writeerror")).close();
-                ImageIO.write(image, "PNG", new File(fileName));
-                new File(fileName + ".writeerror").delete();
+                new FileOutputStream(new File(outDir, fileName + ".writeerror")).close();
+                boolean writeSuccess = ImageIO.write(image, "PNG", new File(outDir, fileName));
+                if (writeSuccess)
+                {
+                    new File(outDir, fileName + ".writeerror").delete();
+                    new File(outDir, fileName + ".writeerror").deleteOnExit();
+                }
             }
 
             // test to see whether file is destroyed in pdfbox
@@ -209,10 +211,13 @@ public class TestPDFToImage
             document.setAllSecurityToBeRemoved(true);
             document.save(tmpFile);
             new File(outDir, file.getName() + ".saveerror").delete();
+            new File(outDir, file.getName() + ".saveerror").deleteOnExit();
             new FileOutputStream(new File(outDir, file.getName() + ".reloaderror")).close();
             Loader.loadPDF(tmpFile, (String) null).close();
             new File(outDir, file.getName() + ".reloaderror").delete();
+            new File(outDir, file.getName() + ".reloaderror").deleteOnExit();
             tmpFile.delete();
+            tmpFile.deleteOnExit();
         }
         catch (IOException e)
         {
@@ -233,7 +238,7 @@ public class TestPDFToImage
         //Now check the resulting files ... did we get identical PNG(s)?
         try
         {
-            new File(outDir + file.getName() + ".cmperror").delete();
+            new File(outDir, file.getName() + ".cmperror").delete();
 
             File[] outFiles = new File(outDir).listFiles(new FilenameFilter()
             {

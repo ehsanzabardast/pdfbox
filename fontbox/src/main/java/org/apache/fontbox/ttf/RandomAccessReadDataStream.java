@@ -20,9 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessRead;
-import org.apache.pdfbox.io.RandomAccessReadBuffer;
 
 /**
  * An implementation of the TTFDataStream using RandomAccessRead as source.
@@ -30,10 +28,10 @@ import org.apache.pdfbox.io.RandomAccessReadBuffer;
  */
 class RandomAccessReadDataStream extends TTFDataStream
 {
-    private final RandomAccessRead randomAccessRead;
     private final long length;
     private final byte[] data;
-    
+    private int currentPosition = 0;
+
     /**
      * Constructor.
      * 
@@ -52,7 +50,6 @@ class RandomAccessReadDataStream extends TTFDataStream
         {
             remainingBytes -= amountRead;
         }
-        this.randomAccessRead = new RandomAccessReadBuffer(data);
     }
     
     /**
@@ -64,9 +61,8 @@ class RandomAccessReadDataStream extends TTFDataStream
      */
     RandomAccessReadDataStream(InputStream inputStream) throws IOException
     {
-        data = IOUtils.toByteArray(inputStream);
+        data = inputStream.readAllBytes();
         length = data.length;
-        this.randomAccessRead = new RandomAccessReadBuffer(data);
     }
 
     /**
@@ -77,7 +73,7 @@ class RandomAccessReadDataStream extends TTFDataStream
     @Override
     public long getCurrentPosition() throws IOException
     {
-        return randomAccessRead.getPosition();
+        return currentPosition;
     }
     
     /**
@@ -88,7 +84,7 @@ class RandomAccessReadDataStream extends TTFDataStream
     @Override
     public void close() throws IOException
     {
-        randomAccessRead.close();
+        // nothing to do
     }
     
     /**
@@ -99,7 +95,11 @@ class RandomAccessReadDataStream extends TTFDataStream
     @Override
     public int read() throws IOException
     {
-        return randomAccessRead.read();
+        if (currentPosition >= length)
+        {
+            return -1;
+        }
+        return data[currentPosition++] & 0xff;
     }
     
     /**
@@ -137,7 +137,11 @@ class RandomAccessReadDataStream extends TTFDataStream
     @Override
     public void seek(long pos) throws IOException
     {
-        randomAccessRead.seek(pos);
+        if (pos < 0)
+        {
+            throw new IOException("Invalid position " + pos);
+        }
+        currentPosition = pos < length ? (int) pos : (int) length;
     }
     
     /**
@@ -154,7 +158,15 @@ class RandomAccessReadDataStream extends TTFDataStream
     @Override
     public int read(byte[] b, int off, int len) throws IOException
     {
-        return randomAccessRead.read(b, off, len);
+        if (currentPosition >= length)
+        {
+            return -1;
+        }
+        int remainingBytes = (int) (length - currentPosition);
+        int bytesToRead = Math.min(remainingBytes, len);
+        System.arraycopy(data, currentPosition, b, off, bytesToRead);
+        currentPosition += bytesToRead;
+        return bytesToRead;
     }
     
     /**

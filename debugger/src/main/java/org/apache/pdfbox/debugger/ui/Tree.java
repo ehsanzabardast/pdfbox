@@ -22,7 +22,6 @@ import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.debugger.treestatus.TreeStatus;
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.common.PDStream;
 
 import javax.swing.JMenuItem;
@@ -168,7 +167,8 @@ public class Tree extends JTree
         {
             try
             {
-                byte[] bytes = IOUtils.toByteArray(cosStream.createRawInputStream());
+                InputStream in = cosStream.createRawInputStream();
+                byte[] bytes = in.readAllBytes();
                 saveStream(bytes, null, null);
             }
             catch (IOException e)
@@ -246,7 +246,8 @@ public class Tree extends JTree
         {
             try
             {
-                byte[] bytes = IOUtils.toByteArray(cosStream.createInputStream());
+                InputStream in = cosStream.createInputStream();
+                byte[] bytes = in.readAllBytes();
                 saveStream(bytes, fileFilter, extension);
             }
             catch (IOException e)
@@ -299,7 +300,7 @@ public class Tree extends JTree
                 try (InputStream is = cosStream.createInputStream();
                         FileOutputStream os = new FileOutputStream(temp))
                 {
-                    IOUtils.copy(is, os);
+                    is.transferTo(os);
                 }
                 Desktop.getDesktop().open(temp);
             }
@@ -350,7 +351,7 @@ public class Tree extends JTree
             try
             {
                 InputStream data = stream.createInputStream(stopFilters);
-                saveStream(IOUtils.toByteArray(data), null, null);
+                saveStream(data.readAllBytes(), null, null);
             }
             catch (IOException e)
             {

@@ -68,7 +68,6 @@ import org.apache.pdfbox.cos.COSStream;
 import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.debugger.hexviewer.HexView;
 import org.apache.pdfbox.debugger.streampane.tooltip.ToolTipController;
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.util.XMLUtil;
@@ -264,7 +263,7 @@ public class StreamPane implements ActionListener
                 JOptionPane.showMessageDialog(panel, command + " text not available (filter missing?)");
                 return;
             }
-            hexView.changeData(IOUtils.toByteArray(is));
+            hexView.changeData(is.readAllBytes());
         }
     }
 
@@ -333,7 +332,7 @@ public class StreamPane implements ActionListener
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try
             {
-                IOUtils.copy(in, baos);
+                in.transferTo(baos);
                 return baos.toString(encoding);
             }
             catch (IOException e)
@@ -407,7 +406,7 @@ public class StreamPane implements ActionListener
             PDFStreamParser parser;
             try
             {
-                parser = new PDFStreamParser(IOUtils.toByteArray(inputStream));
+                parser = new PDFStreamParser(inputStream.readAllBytes());
                 parser.parse().forEach(obj -> writeToken(obj, docu));
             }
             catch (IOException e)

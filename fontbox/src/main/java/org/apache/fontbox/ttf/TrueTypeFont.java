@@ -71,14 +71,6 @@ public class TrueTypeFont implements FontBoxFont, Closeable
         data.close();
     }
 
-    @Override
-    protected void finalize() throws Throwable
-    {
-        super.finalize();
-        // PDFBOX-4963: risk of memory leaks due to SoftReference in FontCache 
-        close();
-    }
-
     /**
      * @return Returns the version.
      */
@@ -633,7 +625,13 @@ public class TrueTypeFont implements FontBoxFont, Closeable
             CmapLookup cmap = getUnicodeCmapLookup(false);
             return cmap.getGlyphId(uni);
         }
-        
+
+        // PDFBOX-5604: assume gnnnnn is a gid
+        if (name.matches("g\\d+"))
+        {
+            return Integer.parseInt(name.substring(1));
+        }
+
         return 0;
     }
 

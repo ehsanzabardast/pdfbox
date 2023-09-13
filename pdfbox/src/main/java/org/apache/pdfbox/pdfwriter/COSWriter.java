@@ -58,7 +58,6 @@ import org.apache.pdfbox.cos.COSString;
 import org.apache.pdfbox.cos.COSUpdateInfo;
 import org.apache.pdfbox.cos.ICOSVisitor;
 
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessInputStream;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.pdfparser.PDFXRefStream;
@@ -489,13 +488,13 @@ public class COSWriter implements ICOSVisitor
                 objectKeys.put(object, key);
                 keyObject.put(key, object);
             }
+            number = compressionPool.getHighestXRefObjectNumber();
             for (COSObjectKey key : compressionPool.getTopLevelObjects())
             {
                 currentObjectKey = key;
                 doWriteObject(key, keyObject.get(key));
             }
             // Append object streams to document.
-            number = compressionPool.getHighestXRefObjectNumber();
             for (COSWriterObjectStream finalizedObjectStream : compressionPool
                     .createObjectStreams())
             {
@@ -860,7 +859,8 @@ public class COSWriter implements ICOSVisitor
     private void doWriteIncrement() throws IOException
     {
         // write existing PDF
-        IOUtils.copy(new RandomAccessInputStream(incrementalInput), incrementalOutput);
+        InputStream input = new RandomAccessInputStream(incrementalInput);
+        input.transferTo(incrementalOutput);
         // write the actual incremental update
         incrementalOutput.write(((ByteArrayOutputStream) output).toByteArray());
     }
@@ -981,7 +981,8 @@ public class COSWriter implements ICOSVisitor
         System.arraycopy(signatureBytes, 0, incrementPart, incPartSigOffset + 1, signatureBytes.length);
 
         // write the data to the incremental output stream
-        IOUtils.copy(new RandomAccessInputStream(incrementalInput), incrementalOutput);
+        InputStream input = new RandomAccessInputStream(incrementalInput);
+        input.transferTo(incrementalOutput);
         incrementalOutput.write(incrementPart);
 
         // prevent further use
@@ -1058,7 +1059,7 @@ public class COSWriter implements ICOSVisitor
             list.add(last - count + 1);
             list.add(count);
         }
-        return list.toArray(new Long[list.size()]);
+        return list.toArray(Long[]::new);
     }
     
     /**
@@ -1090,24 +1091,20 @@ public class COSWriter implements ICOSVisitor
     }
 
     @Override
-    public void visitFromArray(COSArray obj) throws IOException
+    public void visitFromArray(COSArray array) throws IOException
     {
         int count = 0;
         getStandardOutput().write(ARRAY_OPEN);
-        for (Iterator<COSBase> i = obj.iterator(); i.hasNext();)
+        for (Iterator<COSBase> i = array.iterator(); i.hasNext();)
         {
             COSBase current = i.next();
             if( current instanceof COSDictionary )
             {
-                if (current.isDirect())
-                {
-                    visitFromDictionary((COSDictionary)current);
-                }
-                else
-                {
-                    addObjectToWrite( current );
-                    writeReference( current );
-                }
+                writeDictionary((COSDictionary) current);
+            }
+            else if (current instanceof COSArray)
+            {
+                writeArray((COSArray) current);
             }
             else if( current instanceof COSObject )
             {
@@ -1137,6 +1134,32 @@ public class COSWriter implements ICOSVisitor
         }
         getStandardOutput().write(ARRAY_CLOSE);
         getStandardOutput().writeEOL();
+    }
+
+    private void writeArray(COSArray array) throws IOException
+    {
+        if (array.isDirect())
+        {
+            visitFromArray(array);
+        }
+        else
+        {
+            addObjectToWrite(array);
+            writeReference(array);
+        }
+    }
+
+    private void writeDictionary(COSDictionary dictionary) throws IOException
+    {
+        if (dictionary.isDirect())
+        {
+            visitFromDictionary(dictionary);
+        }
+        else
+        {
+            addObjectToWrite(dictionary);
+            writeReference(dictionary);
+        }
     }
 
     @Override
@@ -1177,18 +1200,7 @@ public class COSWriter implements ICOSVisitor
                             item.setDirect(true);
                         }
                     }
-
-                    if(dict.isDirect())
-                    {
-                        // If the object should be written direct, we need
-                        // to pass the dictionary to the visitor again.
-                        visitFromDictionary(dict);
-                    }
-                    else
-                    {
-                        addObjectToWrite( dict );
-                        writeReference( dict );
-                    }
+                    writeDictionary(dict);
                 }
                 else if( value instanceof COSObject )
                 {
@@ -1212,6 +1224,10 @@ public class COSWriter implements ICOSVisitor
                         value.accept(this);
                         byteRangeLength = getStandardOutput().getPos() - 1 - byteRangeOffset;
                         reachedSignature = false;
+                    }
+                    else if (value instanceof COSArray)
+                    {
+                        writeArray((COSArray) value);
                     }
                     else
                     {
@@ -1376,7 +1392,7 @@ public class COSWriter implements ICOSVisitor
             if (obj.hasData())
             {
                 input = obj.createRawInputStream();
-                IOUtils.copy(input, getStandardOutput());
+                input.transferTo(getStandardOutput());
             }
             getStandardOutput().writeCRLF();
             getStandardOutput().write(ENDSTREAM);

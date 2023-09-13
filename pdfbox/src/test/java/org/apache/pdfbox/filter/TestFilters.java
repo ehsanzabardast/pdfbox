@@ -22,13 +22,13 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 
 import java.util.Random;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.io.IOUtils;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -142,7 +142,8 @@ class TestFilters
     void testPDFBOX1977() throws IOException
     {
         Filter lzwFilter = FilterFactory.INSTANCE.getFilter(COSName.LZW_DECODE);
-        byte[] byteArray = IOUtils.toByteArray(this.getClass().getResourceAsStream("PDFBOX-1977.bin"));
+        InputStream in = this.getClass().getResourceAsStream("PDFBOX-1977.bin");
+        byte[] byteArray = in.readAllBytes();
         checkEncodeDecode(lzwFilter, byteArray);
     }
 

@@ -41,7 +41,6 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessRead;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
@@ -327,6 +326,21 @@ class TestSymmetricKeyEncryption
         }
     }
 
+    /**
+     * test AESV3 with R=5 and excess bytes.
+     * 
+     * @throws IOException 
+     */
+    @Test
+    void testPDFBox5639() throws IOException
+    {
+        File file = new File("target/pdfs", "PDFBOX-5639.pdf");
+        try (PDDocument document = Loader.loadPDF(file, "JUL2023rfi"))
+        {
+            assertEquals(2, document.getNumberOfPages());
+        }
+    }
+
     private void testSymmEncrForKeySize(String filename, int keyLength, boolean preferAES,
             int sizePriorToEncr, byte[] inputFileAsByteArray,
             String userpassword, String ownerpassword,
@@ -343,7 +357,7 @@ class TestSymmetricKeyEncryption
             srcImgTab.add(pdfRenderer.renderImage(i));
             try (InputStream unfilteredStream = document.getPage(i).getContents())
             {
-                srcContentStreamTab.add(IOUtils.toByteArray(unfilteredStream));
+                srcContentStreamTab.add(unfilteredStream.readAllBytes());
             }
         }
 
@@ -361,7 +375,7 @@ class TestSymmetricKeyEncryption
                 // compare content streams
                 try (InputStream unfilteredStream = encryptedDoc.getPage(i).getContents())
                 {
-                    byte[] bytes = IOUtils.toByteArray(unfilteredStream);
+                    byte[] bytes = unfilteredStream.readAllBytes();
                     assertArrayEquals(srcContentStreamTab.get(i),bytes, "content stream of page " + i + " not identical");
                 }
             }
@@ -446,7 +460,7 @@ class TestSymmetricKeyEncryption
         try (FileOutputStream fos = new FileOutputStream(resultFile);
              InputStream is = embeddedFile.createInputStream())
         {
-            IOUtils.copy(is, fos);
+            is.transferTo(fos);
         }
 
         LOG.info("  size: " + embeddedFile.getSize());
@@ -483,7 +497,7 @@ class TestSymmetricKeyEncryption
 
     private byte[] getFileResourceAsByteArray(String testFileName) throws IOException
     {
-        return IOUtils.toByteArray(TestSymmetricKeyEncryption.class.getResourceAsStream(testFileName));
+        return TestSymmetricKeyEncryption.class.getResourceAsStream(testFileName).readAllBytes();
     }
 
     private byte[] getFileAsByteArray(File f) throws IOException

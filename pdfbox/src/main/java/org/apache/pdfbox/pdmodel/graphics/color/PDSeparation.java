@@ -149,15 +149,14 @@ public class PDSeparation extends PDSpecialColorSpace
             // PDFBOX-3622 - regular converter fails for Lab colorspaces
             return toRGBImage2(raster);
         }
-        
+
+        int numAltComponents = alternateColorSpace.getNumberOfComponents();
+
         // use the tint transform to convert the sample into
         // the alternate color space (this is usually 1:many)
         WritableRaster altRaster = Raster.createBandedRaster(DataBuffer.TYPE_BYTE,
-                raster.getWidth(), raster.getHeight(),
-                alternateColorSpace.getNumberOfComponents(),
-                new Point(0, 0));
+                raster.getWidth(), raster.getHeight(), numAltComponents, new Point(0, 0));
 
-        int numAltComponents = alternateColorSpace.getNumberOfComponents();
         int width = raster.getWidth();
         int height = raster.getHeight();
         float[] samples = new float[1];

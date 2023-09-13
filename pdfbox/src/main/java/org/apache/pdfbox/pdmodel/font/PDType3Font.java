@@ -135,8 +135,8 @@ public class PDType3Font extends PDSimpleFont
     @Override
     public boolean hasGlyph(String name) throws IOException
     {
-        return getCharProcs() == null ? false
-                : getCharProcs().getCOSStream(COSName.getPDFName(name)) != null;
+        COSDictionary cp = getCharProcs();
+        return cp != null && cp.getCOSStream(COSName.getPDFName(name)) != null;
     }
 
     @Override
